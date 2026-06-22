@@ -51,6 +51,7 @@
             
         }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-9EMLFT9KCG"></script>
 <script>
@@ -136,6 +137,9 @@
     </div>
 
     <script>
+        const SUPABASE_URL = "https://jdlyhfqridlctyglujsc.supabase.co"; // paste your Project URL here
+        const SUPABASE_ANON_KEY = "sb_publishable_HRro_tzaeAnNUKT5mtJYyg_u1gUGPAm"; // paste your anon public key here
+        const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         const ADMIN_PASSWORD = "ljubimsaro"; // CHANGE THIS
 
         let particles = [], heartPoints = [], heartStarted = false, langInterval = null;
@@ -284,28 +288,30 @@
         document.getElementById("cancelLoginBtn").addEventListener("click", () => { hideAll(); document.getElementById("introScreen").classList.remove("hidden"); });
         document.getElementById("cancelAdminBtn").addEventListener("click", () => { hideAll(); document.getElementById("introScreen").classList.remove("hidden"); });
 
-        document.getElementById("saveEntryBtn").addEventListener("click", () => {
-            const title = document.getElementById("entryTitle").value.trim();
-            const date = document.getElementById("entryDate").value;
-            const content = document.getElementById("entryContent").value.trim();
-            if (!title || !date || !content) return alert("Please fill all fields");
+        document.getElementById("saveEntryBtn").addEventListener("click", async () => {
+        const title = document.getElementById("entryTitle").value.trim();
+        const date = document.getElementById("entryDate").value;
+        const content = document.getElementById("entryContent").value.trim();
+        if (!title || !date || !content) return alert("Please fill all fields");
+        const { error } = await sb.from("entries").insert([{ title, entry_date: date, content }]);
+        if (error) { alert("Error saving: " + error.message); return; }
+        alert("Memory saved ❤️");
+        document.getElementById("entryTitle").value = "";
+        document.getElementById("entryDate").value = "";
+        document.getElementById("entryContent").value = "";
+        loadAdminStories();
+    });
 
-            let entries = JSON.parse(localStorage.getItem("loveEntries")) || [];
-            entries.push({id: Date.now(), title, date, content});
-            localStorage.setItem("loveEntries", JSON.stringify(entries));
-            alert("Memory saved ❤️");
-            document.getElementById("entryTitle").value = "";
-            document.getElementById("entryDate").value = "";
-            document.getElementById("entryContent").value = "";
-            loadAdminStories();
-        });
+        async function getEntries() {
+        const { data, error } = await sb.from("entries").select("*");
+        if (error) { console.error(error); return []; }
+        return data.map(e => ({ id: e.id, title: e.title, date: e.entry_date, content: e.content }));
+    }
 
-        function getEntries() { return JSON.parse(localStorage.getItem("loveEntries")) || []; }
-
-        function loadAdminStories() {
+        async function loadAdminStories() {
             const container = document.getElementById("adminStoriesList");
             container.innerHTML = "";
-            let entries = getEntries();
+            let entries = await getEntries();
             if (entries.length === 0) {
                 container.innerHTML = `<p style="color:#888;padding:20px">No stories yet.</p>`;
                 return;
@@ -315,29 +321,30 @@
                 card.className = "story-card";
                 card.style.cursor = "default";
                 card.innerHTML = `<h3>${entry.title}</h3><div class="date">${entry.date}</div><p>${entry.content.substring(0,130)}...</p><button class="delete-btn">🗑 Delete</button>`;
-                card.querySelector(".delete-btn").addEventListener("click", (e) => {
-                    e.stopImmediatePropagation();
-                    if (confirm(`Delete "${entry.title}"?`)) {
-                        let entries = getEntries();
-                        entries.splice(index, 1);
-                        localStorage.setItem("loveEntries", JSON.stringify(entries));
-                        loadAdminStories();
-                    }
-                });
+                card.querySelector(".delete-btn").addEventListener("click", async (e) => {
+                e.stopImmediatePropagation();
+                if (confirm(`Delete "${entry.title}"?`)) {
+                    const { error } = await sb.from("entries").delete().eq("id", entry.id);
+                    if (error) { alert("Error deleting: " + error.message); return; }
+                    loadAdminStories();
+                }
+            });
                 container.appendChild(card);
             });
         }
 
-        function showStories() {
+        async function showStories() {
             hideAll();
             document.getElementById("storiesScreen").classList.remove("hidden");
             const list = document.getElementById("storiesList");
             list.innerHTML = "";
-            let entries = getEntries();
+            let entries = await getEntries();
             if (entries.length === 0) {
                 list.innerHTML = `<p style="color:#888;padding:30px">No stories yet...</p>`;
                 return;
             }
+            const searchTerm = document.getElementById("searchInput").value.toLowerCase();
+            entries = entries.filter(e => e.title.toLowerCase().includes(searchTerm) || e.content.toLowerCase().includes(searchTerm));
             const sortMode = document.getElementById("sortSelect").value;
             entries.sort((a,b) => sortMode === "newest" ? new Date(b.date) - new Date(a.date) : new Date(a.date) - new Date(b.date));
             entries.forEach(entry => {
